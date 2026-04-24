@@ -1,6 +1,11 @@
 const User = require("../models/user.model");
 const { getHashedPass, verifyPass } = require("../utils/hash");
-const jwt = require("jsonwebtoken");
+const {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyToken,
+} = require("../utils/jwt");
+const { refreshCookieOptions } = require("../utils/cookies");
 
 exports.register = async (req, res) => {
   const { username, email, password } = req.body;
@@ -59,33 +64,77 @@ exports.login = async (req, res) => {
         message: "Wrong credentials",
       });
     }
-    if (!process.env.JWT_SECRET) {
-      throw new Error("JWT secret isn't defined");
-    }
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "1d",
-      },
-    );
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
 
     return res
       .status(200)
-      .res.cookie("token", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "strict",
-        maxAge: 24 * 60 * 60 * 1000,
-      })
+      .cookie("refreshToken", refreshToken, refreshCookieOptions)
       .json({
         success: true,
         message: "Logged in successfuly",
+        accessToken: accessToken,
       });
   } catch (e) {
+    console.log(e);
     return res.status(500).json({
       success: false,
       message: "Something went wrong while loggin",
     });
   }
+};
+
+exports.refresh = async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+  try {
+    if (!refreshToken) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Refresh token not found." });
+    }
+
+    const verified = verifyToken(refreshToken);
+
+    if (!verified) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired refresh token",
+      });
+    }
+
+    const user = await User.findById(verified.id);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User no longer exists",
+      });
+    }
+
+    const accessToken = generateAccessToken(user._id);
+    const newRefreshToken = generateRefreshToken(user._id);
+
+    return res
+      .status(200)
+      .cookie("refreshToken", newRefreshToken, refreshCookieOptions)
+      .json({
+        success: true,
+        message: "Token generated successfuly",
+        accessToken: accessToken,
+      });
+  } catch (e) {
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while creating token.",
+    });
+  }
+};
+
+exports.logout = (req, res) => {
+  return res
+    .status(200)
+    .clearCookie("refreshToken", refreshCookieOptions)
+    .json({
+      success: true,
+      message: "logged out successfuly",
+    });
 };
