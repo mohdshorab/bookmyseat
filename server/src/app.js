@@ -1,16 +1,37 @@
 const express = require("express");
 require("dotenv").config();
-const cors = require('cors');
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
+const authRoutes = require("./routes/auth.routes");
+const connectDB = require("./configs/db");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({extended: true}));
+app.use(cookieParser());
+app.use(express.urlencoded({ extended: true }));
 
-app.get("/", (req, res) => {
-  res.json({ message: "server is running" });
+app.use("/bookmyseat/auth", authRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
 });
 
-app.listen(process.env.PORT);
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({
+    success: false,
+    message: "Something went wrong",
+  });
+});
 
+const runServer = async () => {
+  await connectDB();
+  app.listen(process.env.PORT);
+};
+
+runServer();
