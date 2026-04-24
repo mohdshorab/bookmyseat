@@ -14,4 +14,3 @@ authRoute.post("/refresh-token", authControllers.refresh);
 authRoute.post("/logout", authControllers.logout);
 
 module.exports = authRoute;
-x;
