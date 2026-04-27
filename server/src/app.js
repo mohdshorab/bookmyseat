@@ -5,6 +5,7 @@ const cookieParser = require("cookie-parser");
 const authRoutes = require("./routes/auth.routes");
 const connectDB = require("./configs/db");
 const eventRoutes = require("./routes/event.routes");
+const { errorHandler } = require("./middlewares/error.middleware");
 
 const app = express();
 
@@ -23,13 +24,7 @@ app.use((req, res) => {
   });
 });
 
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({
-    success: false,
-    message: "Something went wrong",
-  });
-});
+app.use(errorHandler);
 
 const runServer = async () => {
   await connectDB();

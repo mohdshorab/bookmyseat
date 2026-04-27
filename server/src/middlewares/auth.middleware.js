@@ -44,7 +44,7 @@ exports.protect = async (req, res, next) => {
   }
 };
 
-exports.checkRole = (req, res, next) => {
+exports.checkForAdmin = (req, res, next) => {
   const user = req.user;
   if (user.role !== "admin") {
     return res.status(403).json({
@@ -52,6 +52,5 @@ exports.checkRole = (req, res, next) => {
       message: "Admin only",
     });
   }
-
   next();
 };
