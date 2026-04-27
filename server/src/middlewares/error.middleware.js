@@ -7,7 +7,8 @@ exports.errorHandler = (err, req, res, next) => {
 
   if (err.code == 11000) {
     statusCode = 409;
-    message = `Duplicate field value entered: ${Object.keys(err.keyValue || {})}`;
+    const field = Object.keys(err.keyValue || {})[0];
+    message = `A record with this ${field} already exists.`;
   }
 
   if (err.name === "ValidationError") {

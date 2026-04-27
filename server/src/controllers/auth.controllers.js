@@ -6,18 +6,12 @@ const {
   verifyToken,
 } = require("../utils/jwt");
 const { refreshCookieOptions } = require("../utils/cookies");
+const sendApiResponse = require("../utils/sendApiResponse");
 
-exports.register = async (req, res) => {
+exports.register = async (req, res, next) => {
   const { username, email, password } = req.body;
 
   try {
-    const isUserExist = await User.findOne({ email: email });
-    if (isUserExist) {
-      return res.status(409).json({
-        success: false,
-        message: "User with this email already existed",
-      });
-    }
     const hashedPass = await getHashedPass(password, 10);
 
     const newUser = await User.create({
@@ -26,115 +20,108 @@ exports.register = async (req, res) => {
       password: hashedPass,
     });
 
-    newUser.password = undefined;
-
-    return res.status(201).json({
-      success: true,
+    return sendApiResponse({
+      status: 201,
       message: "Registered successfuly",
-      user: {
-        _id: newUser._id,
-        username: newUser.username,
-        email: newUser.email,
+      res,
+      props: {
+        user: {
+          _id: newUser._id,
+          username: newUser.username,
+          email: newUser.email,
+        },
       },
     });
   } catch (e) {
-    console.log("register err : ", e);
-    return res.status(500).json({
-      success: false,
-      message: "Something went wrong while creating user",
-    });
+    next(e);
   }
 };
 
-exports.login = async (req, res) => {
+exports.login = async (req, res, next) => {
   const { email, password } = req.body;
 
   try {
     const user = await User.findOne({ email: email });
     if (!user) {
-      return res.status(404).json({
-        success: false,
+      return sendApiResponse({
+        status: 404,
         message: "User not found",
+        res,
       });
     }
     const isPassVerified = await verifyPass(password, user.password);
     if (!isPassVerified) {
-      return res.status(401).json({
-        success: false,
+      return sendApiResponse({
+        status: 401,
         message: "Wrong credentials",
+        res,
       });
     }
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
-
-    return res
-      .status(200)
-      .cookie("refreshToken", refreshToken, refreshCookieOptions)
-      .json({
-        success: true,
-        message: "Logged in successfuly",
-        accessToken: accessToken,
-      });
-  } catch (e) {
-    console.log(e);
-    return res.status(500).json({
-      success: false,
-      message: "Something went wrong while loggin",
+    return sendApiResponse({
+      status: 200,
+      message: "Logged in successfully",
+      res: res.cookie("refreshToken", refreshToken, refreshCookieOptions),
+      props: { accessToken }
     });
+  } catch (e) {
+    next(e);
   }
 };
 
-exports.refresh = async (req, res) => {
+exports.refresh = async (req, res, next) => {
   const refreshToken = req.cookies.refreshToken;
   try {
     if (!refreshToken) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Refresh token not found." });
+      return sendApiResponse({
+        status: 401,
+        message: "Refresh token not found",
+        res,
+      });
     }
 
     const verified = verifyToken(refreshToken);
 
     if (!verified) {
-      return res.status(401).json({
-        success: false,
+      return sendApiResponse({
+        status: 401,
         message: "Invalid or expired refresh token",
+        res,
       });
     }
 
     const user = await User.findById(verified.id);
     if (!user) {
-      return res.status(401).json({
-        success: false,
+      return sendApiResponse({
+        status: 401,
         message: "User no longer exists",
+        res,
       });
     }
 
     const accessToken = generateAccessToken(user._id);
     const newRefreshToken = generateRefreshToken(user._id);
 
-    return res
-      .status(200)
-      .cookie("refreshToken", newRefreshToken, refreshCookieOptions)
-      .json({
-        success: true,
-        message: "Token generated successfuly",
-        accessToken: accessToken,
-      });
-  } catch (e) {
-    return res.status(500).json({
-      success: false,
-      message: "Something went wrong while creating token.",
+    return sendApiResponse({
+      status: 200,
+      message: "Token generated successfuly",
+      res: res.cookie("refreshToken", newRefreshToken, refreshCookieOptions),
+      props: { accessToken },
     });
+  } catch (e) {
+    next(e);
   }
 };
 
-exports.logout = (req, res) => {
-  return res
-    .status(200)
-    .clearCookie("refreshToken", refreshCookieOptions)
-    .json({
-      success: true,
-      message: "logged out successfuly",
+exports.logout = async (req, res, next) => {
+  try {
+    return sendApiResponse({
+      status: 200,
+      message: "Logged out successfuly",
+      res: res.clearCookie("refreshToken", refreshCookieOptions),
     });
+  } catch (e) {
+    next(e);
+  }
 };
