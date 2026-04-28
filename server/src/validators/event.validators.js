@@ -28,7 +28,8 @@ exports.eventSchema = z.object({
     total_seats: z
       .number({ required_error: "Total seats is required" })
       .int("Seats must be a whole number")
-      .min(10, "Minimum 10 seats are required to create an event"),
+      .min(10, "Minimum 10 seats are required to create an event")
+      .max(50, "Capacity cannot exceed 50 seats")
   }),
 });
 
@@ -70,6 +71,7 @@ exports.updateEventSchema = z.object({
       .number()
       .int("Seats must be a whole number")
       .min(10, "Capacity cannot be reduced below 10 seats")
+      .max(50, "Capacity cannot exceed 50 seats")
       .optional(),
   }),
 });

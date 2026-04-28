@@ -1,21 +1,40 @@
+const mongoose = require("mongoose");
 const Event = require("../models/event.model");
+const Seat = require("../models/seat.model");
 const sendApiResponse = require("../utils/sendApiResponse");
 
 exports.createEvent = async (req, res, next) => {
   const { title, description, date, venue, price, total_seats } = req.body;
+  const session = await mongoose.startSession();
   try {
-    const event = await Event.create({
-      title,
-      description,
-      date,
-      venue,
-      price,
-      total_seats,
-      available_seats: total_seats,
-      booked_seats: 0,
-      createdBy: req.user._id,
-      status: "active",
-    });
+    session.startTransaction();
+    const eventResult = await Event.create(
+      [
+        {
+          title,
+          description,
+          date,
+          venue,
+          price,
+          total_seats,
+          available_seats: total_seats,
+          booked_seats: 0,
+          createdBy: req.user._id,
+          status: "active",
+        },
+      ],
+      { session },
+    );
+    const event = eventResult[0];
+    const seats = [];
+    for (let i = 1; i <= total_seats; i++) {
+      seats.push({
+        seatNumber: i,
+        eventId: event._id,
+      });
+    }
+    await Seat.insertMany(seats, { session });
+    await session.commitTransaction();
     return sendApiResponse({
       status: 201,
       message: "Event created successfully.",
@@ -23,7 +42,10 @@ exports.createEvent = async (req, res, next) => {
       props: { event },
     });
   } catch (e) {
+    session.abortTransaction();
     next(e);
+  } finally {
+    session.endSession();
   }
 };
 
