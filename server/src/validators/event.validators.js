@@ -60,13 +60,6 @@ exports.updateEventSchema = z.object({
       .number()
       .min(100, "Updated price cannot be less than 100")
       .optional(),
-    status: z
-      .enum(["active", "cancelled"], {
-        errorMap: () => ({
-          message: "Status must be either 'active' or 'cancelled'",
-        }),
-      })
-      .optional(),
     total_seats: z
       .number()
       .int("Seats must be a whole number")

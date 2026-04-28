@@ -42,7 +42,7 @@ exports.createEvent = async (req, res, next) => {
       props: { event },
     });
   } catch (e) {
-    session.abortTransaction();
+    await session.abortTransaction();
     next(e);
   } finally {
     session.endSession();
@@ -50,59 +50,141 @@ exports.createEvent = async (req, res, next) => {
 };
 
 exports.deleteEvent = async (req, res, next) => {
+  const session = await mongoose.startSession();
+
   try {
     const id = req.params.id;
-
-    const result = await Event.findByIdAndDelete(id);
+    session.startTransaction();
+    //Check if there are booked seats or not
+    const bookedCount = await Seat.countDocuments({
+      eventId: id,
+      status: { $in: ["booked", "locked"] },
+    });
+    if (bookedCount > 0) {
+      await session.abortTransaction();
+      return sendApiResponse({
+        status: 400,
+        message: "Event cannot be deleted as it has booked/locked seats",
+        res,
+      });
+    }
+    // If not then del
+    const result = await Event.findByIdAndDelete(id, { session });
     if (!result) {
+      await session.abortTransaction();
       return sendApiResponse({ status: 404, message: "Event not found.", res });
     }
+
+    await Seat.deleteMany({ eventId: id }, { session });
+
+    await session.commitTransaction();
+
     return sendApiResponse({
       status: 200,
       message: "Event deleted successfully",
       res,
     });
   } catch (e) {
+    await session.abortTransaction();
     next(e);
+  } finally {
+    session.endSession();
   }
 };
 
 exports.updateEvent = async (req, res, next) => {
+  const session = await mongoose.startSession();
   try {
     const id = req.params.id;
 
-    const { title, description, venue, status, total_seats } = req.body;
+    const { title, description, venue, total_seats } = req.body;
+    session.startTransaction();
 
-    const filter = { _id: id };
-
-    if (total_seats !== undefined) {
-      filter.$expr = { $gte: [total_seats, "$booked_seats"] };
+    // check event exist
+    const document = await Event.findById(id).lean().session(session);
+    if (!document) {
+      await session.abortTransaction();
+      return sendApiResponse({ status: 404, message: "Event not found.", res });
     }
-    const newObject = { title, description, venue, status, total_seats };
-    const updatedEve = await Event.findOneAndUpdate(
-      filter,
+
+    // check if booked seats are more than new total seats
+    const notAvailSeatCount = await Seat.countDocuments(
       {
-        $set: newObject,
+        eventId: id,
+        status: { $in: ["locked", "booked"] },
       },
-      { returnDocument: "after" },
+      { session },
     );
 
-    if (!updatedEve) {
+    if (notAvailSeatCount > total_seats) {
+      await session.abortTransaction();
       return sendApiResponse({
         status: 400,
-        message: "Event not found or Total Seats cannot be less than booked.",
+        message: `Cannot reduce capacity. ${notAvailSeatCount} seats are currently booked or being held.`,
         res,
       });
     }
 
+    // update event details
+    const updatedEvent = await Event.findOneAndUpdate(
+      { _id: id },
+      {
+        $set: {
+          title,
+          description,
+          venue,
+          total_seats,
+          available_seats: total_seats - document.booked_seats
+        },
+      },
+      { returnDocument: "after", session },
+    );
+
+    // if total_seats is updated calculate the difference
+    const seatDiff = document.total_seats - total_seats;
+    const seats = [];
+
+    // if new total_seat is greater than old total_seat, add new seats
+    if (seatDiff < 0) {
+      for (let i = document.total_seats + 1; i <= total_seats; i++) {
+        seats.push({
+          seatNumber: i,
+          eventId: id,
+        });
+      }
+      await Seat.insertMany(seats, { session });
+    }
+
+    // if new total_seat is less than old total_seat, delete seats
+    if (seatDiff > 0) {
+      const allSeats = await Seat.find({
+        eventId: id,
+        status: "available",
+      })
+        .sort({ seatNumber: -1 })
+        .limit(seatDiff)
+        .select("_id")
+        .session(session);
+
+      const arrOfSeatIds = allSeats.map((seat) => seat._id);
+
+      if (arrOfSeatIds.length > 0) {
+        await Seat.deleteMany({ _id: { $in: arrOfSeatIds } }, { session });
+      }
+    }
+
+    await session.commitTransaction();
     return sendApiResponse({
       status: 200,
       message: "Event updated successfully",
       res,
-      props: { event: updatedEve },
+      props: { event: updatedEvent },
     });
   } catch (e) {
+    await session.abortTransaction();
     next(e);
+  } finally {
+    session.endSession();
   }
 };
 
@@ -138,5 +220,56 @@ exports.singleEvent = async (req, res, next) => {
     });
   } catch (e) {
     next(e);
+  }
+};
+
+exports.cancelEvent = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const id = req.params.id;
+
+    const event = await Event.findById(id).session(session);
+    if (!event) {
+      await session.abortTransaction();
+      return sendApiResponse({ status: 404, message: "Event not found.", res });
+    }
+
+    if (event.status === "cancelled") {
+      await session.abortTransaction();
+      return sendApiResponse({
+        status: 400,
+        message: "Event is already cancelled.",
+        res,
+      });
+    }
+
+    event.status = "cancelled";
+    await event.save({ session });
+
+    await Seat.updateMany(
+      { eventId: id, status: "booked" },
+      { $set: { status: "cancelled" } },
+      { session },
+    );
+
+    await Seat.deleteMany(
+      { eventId: id, status: { $in: ["available", "locked"] } },
+      { session },
+    );
+
+    await session.commitTransaction();
+
+    return sendApiResponse({
+      status: 200,
+      message: "Event cancelled successfully",
+      res,
+      props: { event },
+    });
+  } catch (e) {
+    await session.abortTransaction();
+    next(e);
+  } finally {
+    session.endSession();
   }
 };
