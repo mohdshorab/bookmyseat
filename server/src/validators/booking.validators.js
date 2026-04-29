@@ -7,7 +7,6 @@ const bookingSchema = z.object({
       .array(z.string())
       .min(1, "Seats are required")
       .max(5, "You can only book up to 5 seats per transaction."),
-    venue: z.string().min(1, "Venue is required"),
   }),
 });
 

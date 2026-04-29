@@ -12,10 +12,6 @@ const bookingSchema = new mongoose.Schema(
       ref: "Event",
       required: true,
     },
-    venue: {
-      type: String,
-      required: true,
-    },
     seats: {
       type: [String],
       ref: "Seat",

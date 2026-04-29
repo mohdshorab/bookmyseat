@@ -68,7 +68,6 @@ exports.initiateBooking = async (req, res, next) => {
         {
           userId: user._id,
           eventId,
-          venue,
           seats,
           totalAmount,
           status: "pending",
