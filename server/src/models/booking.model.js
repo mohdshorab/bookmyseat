@@ -46,8 +46,8 @@ const bookingSchema = new mongoose.Schema(
     },
     expiresAt: {
       type: Date,
-      required: true,
-    }
+      default: Date.now() + 15 * 60 * 1000,
+    },
   },
   { timestamps: true },
 );

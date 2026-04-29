@@ -8,8 +8,19 @@ const bookingSchema = z.object({
       .min(1, "Seats are required")
       .max(5, "You can only book up to 5 seats per transaction."),
     venue: z.string().min(1, "Venue is required"),
-    totalAmount: z.number().positive(),
+    totalAmount: z.number().min(100).positive(),
   }),
 });
 
-module.exports = bookingSchema;
+const confirmBookingSchema = z.object({
+  body: z.object({
+    paymentId: z.string().min(1, "Payment ID is required"),
+    paymentMethod: z.string().min(1, "Payment Method is required"),
+    paymentStatus: z.enum(["success", "failed"]),
+  }),
+});
+
+module.exports = {
+  bookingSchema,
+  confirmBookingSchema,
+};
