@@ -3,10 +3,11 @@ const Booking = require("../models/booking.model");
 const sendApiresponse = require("../utils/sendApiResponse");
 const mongoose = require("mongoose");
 const Seat = require("../models/seat.model");
+const { releaseTheSeats } = require("../utils/seatUtils");
 
 exports.initiateBooking = async (req, res, next) => {
   const user = req.user;
-  const { eventId, seats, venue, totalAmount } = req.body;
+  const { eventId, seats, venue } = req.body;
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
@@ -15,16 +16,11 @@ exports.initiateBooking = async (req, res, next) => {
       .lean()
       .session(session);
 
-    if (!eventExistence) {
-      await session.abortTransaction();
-      return sendApiresponse({ status: 404, message: "Event not found", res });
-    }
-
-    if (eventExistence.status === "cancelled") {
+    if (!eventExistence || eventExistence.status === "cancelled") {
       await session.abortTransaction();
       return sendApiresponse({
         status: 400,
-        message: "Event is cancelled",
+        message: "Event unavailable",
         res,
       });
     }
@@ -38,41 +34,15 @@ exports.initiateBooking = async (req, res, next) => {
       });
     }
 
-    const availableSeatsCount = await Seat.countDocuments(
+    const lockSeats = await Seat.updateMany(
       {
         _id: { $in: seats },
-        status: "available",
+        $or: [
+          { status: "available" },
+          { status: "locked", lockExpiresAt: { $lt: new Date() } },
+        ],
         eventId,
       },
-      { session },
-    );
-
-    if (availableSeatsCount !== seats.length) {
-      await session.abortTransaction();
-      return sendApiresponse({
-        status: 400,
-        message: "One or more selected seats are no longer available.",
-        res,
-      });
-    }
-    const totalAmount = eventExistence.price * availableSeatsCount;
-
-    const booking = await Booking.create(
-      [
-        {
-          userId: user._id,
-          eventId,
-          venue,
-          seats,
-          totalAmount: totalAmount,
-          status: "pending",
-        },
-      ],
-      { session },
-    );
-
-    const lockSeats = await Seat.updateMany(
-      { _id: { $in: seats }, status: "available", eventId },
       {
         $set: {
           status: "locked",
@@ -91,6 +61,21 @@ exports.initiateBooking = async (req, res, next) => {
         res,
       });
     }
+    const totalAmount = eventExistence.price * seats.length;
+
+    const booking = await Booking.create(
+      [
+        {
+          userId: user._id,
+          eventId,
+          venue,
+          seats,
+          totalAmount,
+          status: "pending",
+        },
+      ],
+      { session },
+    );
 
     await session.commitTransaction();
     return sendApiresponse({
@@ -119,15 +104,6 @@ exports.confirmBooking = async (req, res) => {
 
     const booking = await Booking.findById(bookingId).session(session);
 
-    if (!booking) {
-      await session.abortTransaction();
-      return sendApiresponse({
-        status: 404,
-        message: "Booking not found",
-        res,
-      });
-    }
-
     const event = await Event.findById(booking.eventId).lean().session(session);
 
     if (!event) {
@@ -139,16 +115,21 @@ exports.confirmBooking = async (req, res) => {
       await session.abortTransaction();
       return sendApiresponse({
         status: 400,
-        message: "Booking is already confirmed or cancelled",
+        message: `Booking is already ${booking.status}.`,
         res,
       });
     }
 
     if (booking.expiresAt < new Date()) {
-      await session.abortTransaction();
+      await releaseTheSeats(booking.seats, session);
+
+      booking.status = "expired";
+      await booking.save({ session });
+
+      await session.commitTransaction();
       return sendApiresponse({
         status: 400,
-        message: "Booking has expired",
+        message: "Your booking session has expired. Please try again.",
         res,
       });
     }
@@ -158,17 +139,7 @@ exports.confirmBooking = async (req, res) => {
       booking.paymentId = paymentId;
       booking.paymentMethod = paymentMethod;
       booking.expiresAt = null;
-      await Seat.updateMany(
-        { _id: { $in: booking.seats } },
-        {
-          $set: {
-            status: "available",
-            lockedBy: null,
-            lockExpiresAt: null,
-          },
-        },
-        { session },
-      );
+      await releaseTheSeats(booking.seats, session);
     }
 
     if (paymentStatus === "success") {
@@ -231,27 +202,12 @@ exports.cancelBooking = async (req, res, next) => {
         res,
       });
     }
-    
+
     const event = await Event.findById(booking.eventId).lean().session(session);
 
-    if (!event) {
+    if (!event || event.status === 'cancelled') {
       await session.abortTransaction();
       return sendApiresponse({ status: 404, message: "Event not found", res });
-    }
-
-    if (booking.status === "cancelled") {
-      let message = "";
-      if (event.status === "cancelled") {
-        message += "Event is cancelled";
-      } else {
-        message += "Booking is cancelled";
-      }
-      await session.abortTransaction();
-      return sendApiresponse({
-        status: 400,
-        message: message,
-        res,
-      });
     }
 
     if (booking.status === "pending") {
@@ -271,19 +227,8 @@ exports.cancelBooking = async (req, res, next) => {
       );
     }
     booking.status = "cancelled";
+    await releaseTheSeats(booking.seats, session);
 
-    await Seat.updateMany(
-      { _id: { $in: booking.seats } },
-      {
-        $set: {
-          status: "available",
-          bookedBy: null,
-          lockedBy: null,
-          lockExpiresAt: null,
-        },
-      },
-      { session },
-    );
     await booking.save({ session });
     await session.commitTransaction();
 
