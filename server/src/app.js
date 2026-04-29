@@ -6,6 +6,7 @@ const authRoutes = require("./routes/auth.routes");
 const connectDB = require("./configs/db");
 const eventRoutes = require("./routes/event.routes");
 const { errorHandler } = require("./middlewares/error.middleware");
+const bookingRoutes = require("./routes/booking.routes");
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/bookmyseat/auth", authRoutes);
 app.use("/bookmyseat/event", eventRoutes);
+app.use("/bookmyseat/booking", bookingRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
