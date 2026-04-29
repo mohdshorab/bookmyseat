@@ -2,7 +2,7 @@ const Event = require("../models/event.model");
 const Booking = require("../models/booking.model");
 const sendApiresponse = require("../utils/sendApiResponse");
 const mongoose = require("mongoose");
-const Seats = require("../models/seat.model");
+const Seat = require("../models/seat.model");
 
 exports.initiateBooking = async (req, res, next) => {
   const user = req.user;
@@ -22,7 +22,11 @@ exports.initiateBooking = async (req, res, next) => {
 
     if (eventExistence.status === "cancelled") {
       await session.abortTransaction();
-      return sendApiresponse({ status: 400, message: "Event is cancelled", res });
+      return sendApiresponse({
+        status: 400,
+        message: "Event is cancelled",
+        res,
+      });
     }
 
     if (eventExistence.available_seats < seats.length) {
@@ -34,7 +38,7 @@ exports.initiateBooking = async (req, res, next) => {
       });
     }
 
-    const availableSeatsCount = await Seats.countDocuments(
+    const availableSeatsCount = await Seat.countDocuments(
       {
         _id: { $in: seats },
         status: "available",
@@ -67,7 +71,7 @@ exports.initiateBooking = async (req, res, next) => {
       { session },
     );
 
-    const lockSeats = await Seats.updateMany(
+    const lockSeats = await Seat.updateMany(
       { _id: { $in: seats }, status: "available", eventId },
       {
         $set: {
@@ -91,7 +95,7 @@ exports.initiateBooking = async (req, res, next) => {
     await session.commitTransaction();
     return sendApiresponse({
       status: 200,
-      message: "Bokking inititated successfully.",
+      message: "Booking initiated successfully.",
       props: {
         booking: booking[0],
       },
@@ -131,11 +135,6 @@ exports.confirmBooking = async (req, res) => {
       return sendApiresponse({ status: 404, message: "Event not found", res });
     }
 
-    if (booking.userId.toString() !== user._id.toString()) {
-      await session.abortTransaction();
-      return sendApiresponse({ status: 403, message: "Unauthorized", res });
-    }
-
     if (booking.status !== "pending") {
       await session.abortTransaction();
       return sendApiresponse({
@@ -159,7 +158,7 @@ exports.confirmBooking = async (req, res) => {
       booking.paymentId = paymentId;
       booking.paymentMethod = paymentMethod;
       booking.expiresAt = null;
-      await Seats.updateMany(
+      await Seat.updateMany(
         { _id: { $in: booking.seats } },
         {
           $set: {
@@ -177,7 +176,7 @@ exports.confirmBooking = async (req, res) => {
       booking.paymentId = paymentId;
       booking.paymentMethod = paymentMethod;
       booking.expiresAt = null;
-      await Seats.updateMany(
+      await Seat.updateMany(
         { _id: { $in: booking.seats } },
         {
           $set: {
@@ -214,5 +213,112 @@ exports.confirmBooking = async (req, res) => {
     next(e);
   } finally {
     await session.endSession();
+  }
+};
+
+exports.cancelBooking = async (req, res, next) => {
+  const { bookingId } = req.params;
+  const user = req.user;
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const booking = await Booking.findById(bookingId).session(session);
+    if (!booking) {
+      await session.abortTransaction();
+      return sendApiresponse({
+        status: 404,
+        message: "Booking not found",
+        res,
+      });
+    }
+    
+    const event = await Event.findById(booking.eventId).lean().session(session);
+
+    if (!event) {
+      await session.abortTransaction();
+      return sendApiresponse({ status: 404, message: "Event not found", res });
+    }
+
+    if (booking.status === "cancelled") {
+      let message = "";
+      if (event.status === "cancelled") {
+        message += "Event is cancelled";
+      } else {
+        message += "Booking is cancelled";
+      }
+      await session.abortTransaction();
+      return sendApiresponse({
+        status: 400,
+        message: message,
+        res,
+      });
+    }
+
+    if (booking.status === "pending") {
+      booking.expiresAt = null;
+    }
+
+    if (booking.status === "confirmed") {
+      await Event.findByIdAndUpdate(
+        booking.eventId,
+        {
+          $inc: {
+            available_seats: booking.seats.length,
+            booked_seats: -booking.seats.length,
+          },
+        },
+        { session },
+      );
+    }
+    booking.status = "cancelled";
+
+    await Seat.updateMany(
+      { _id: { $in: booking.seats } },
+      {
+        $set: {
+          status: "available",
+          bookedBy: null,
+          lockedBy: null,
+          lockExpiresAt: null,
+        },
+      },
+      { session },
+    );
+    await booking.save({ session });
+    await session.commitTransaction();
+
+    return sendApiresponse({
+      status: 200,
+      message: "Booking cancelled successfully",
+      res,
+      props: { booking },
+    });
+  } catch (e) {
+    await session.abortTransaction();
+    next(e);
+  } finally {
+    await session.endSession();
+  }
+};
+
+exports.getMyBooking = async (req, res, next) => {
+  const user = req.user;
+  try {
+    const bookings = await Booking.find({ userId: user._id }).sort({
+      createdAt: -1,
+    });
+    if (!bookings) {
+      return sendApiresponse({ status: 404, message: "No booking found", res });
+    }
+    return sendApiresponse({
+      status: 200,
+      message: "Bookings fetched successfully",
+      res,
+      props: {
+        bookings,
+      },
+    });
+  } catch (e) {
+    next(e);
   }
 };

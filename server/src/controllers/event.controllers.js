@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Event = require("../models/event.model");
 const Seat = require("../models/seat.model");
+const Booking = require("../models/booking.model");
 const sendApiResponse = require("../utils/sendApiResponse");
 
 exports.createEvent = async (req, res, next) => {
@@ -246,6 +247,12 @@ exports.cancelEvent = async (req, res, next) => {
 
     event.status = "cancelled";
     await event.save({ session });
+
+    await Booking.updateMany(
+      { eventId: id, status: { $in: ["confirmed", "pending"] } },
+      { $set: { status: "cancelled" } },
+      { session },
+    );
 
     await Seat.updateMany(
       { eventId: id, status: "booked" },
