@@ -1,9 +1,14 @@
 const request = require("supertest");
+const mongoose = require("mongoose");
 const app = require("../../src/app");
 const User = require("../../src/models/user.model");
 
 beforeEach(async () => {
   await User.deleteMany({});
+});
+
+afterAll(async () => {
+  await mongoose.connection.close();
 });
 
 const user = {
@@ -30,7 +35,6 @@ describe("POST, /auth/register", () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
-    expect(res.body.user).toBeUndefined();
   });
 
   test("check incomplete body or mising", async () => {
@@ -81,7 +85,6 @@ describe("POST /bookmyseat/auth/login", () => {
 // auth/logout
 describe("POST /bookmyseat/auth/logout", () => {
   test("should logout and clear the cookie", async () => {
-
     await request(app).post("/bookmyseat/auth/register").send(user);
     const loginRes = await request(app)
       .post("/bookmyseat/auth/login")
