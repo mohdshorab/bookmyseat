@@ -1,9 +1,7 @@
 const express = require("express");
-require("dotenv").config();
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const authRoutes = require("./routes/auth.routes");
-const connectDB = require("./configs/db");
 const eventRoutes = require("./routes/event.routes");
 const { errorHandler } = require("./middlewares/error.middleware");
 const bookingRoutes = require("./routes/booking.routes");
@@ -28,9 +26,4 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
-const runServer = async () => {
-  await connectDB();
-  app.listen(process.env.PORT);
-};
-
-runServer();
+module.exports = app; 
