@@ -9,18 +9,20 @@ const {
 const {
   checkForSuperAdmin,
   protect,
-} = require("../middlewares/auth.middleware");
+  } = require("../middlewares/auth.middleware");
+  const { authLimiter } = require("../middlewares/rateLimit.middleware");
 
 const authRoute = express.Router();
 
-authRoute.post("/register", validate(registerSchema), authControllers.register);
-authRoute.post("/login", validate(loginSchema), authControllers.login);
+authRoute.post("/register", authLimiter, validate(registerSchema), authControllers.register);
+authRoute.post("/login", authLimiter, validate(loginSchema), authControllers.login);
 authRoute.post("/refresh-token", authControllers.refresh);
 authRoute.post("/logout", authControllers.logout);
 authRoute.post(
   "/create-admin",
   protect,
   checkForSuperAdmin,
+  authLimiter,
   validate(adminSchema),
   authControllers.createAdmin,
 );

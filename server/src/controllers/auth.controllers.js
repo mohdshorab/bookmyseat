@@ -147,10 +147,12 @@ exports.createAdmin = async (req, res, next) => {
       });
     }
 
+    const hashedPass = await getHashedPass(password, 10);
+
     const adminUser = await User.create({
       username,
       email,
-      password,
+      password: hashedPass,
       role: "admin",
     });
 
