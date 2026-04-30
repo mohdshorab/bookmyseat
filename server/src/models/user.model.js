@@ -13,7 +13,7 @@ const User = mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["user", "admin"],
+      enum: ["user", "admin", "super"],
       default: "user",
     },
     password: { type: String, required: [true, "Password can't be empty"] },

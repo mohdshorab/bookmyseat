@@ -98,7 +98,7 @@ exports.updateEvent = async (req, res, next) => {
   try {
     const id = req.params.id;
 
-    const { title, description, venue, total_seats } = req.body;
+    const { title, description, venue, total_seats, price } = req.body;
     session.startTransaction();
 
     // check event exist
@@ -116,6 +116,15 @@ exports.updateEvent = async (req, res, next) => {
       },
       { session },
     );
+
+    if (price !== document.price && notAvailSeatCount > 0) {
+      await session.abortTransaction();
+      return sendApiResponse(res, {
+        status: 400,
+        message:
+          "Price cannot be modified because some seats are already booked or locked.",
+      });
+    }
 
     if (notAvailSeatCount > total_seats) {
       await session.abortTransaction();
@@ -135,7 +144,8 @@ exports.updateEvent = async (req, res, next) => {
           description,
           venue,
           total_seats,
-          available_seats: total_seats - document.booked_seats
+          price,
+          available_seats: total_seats ? total_seats - document.booked_seats : document.total_seats,
         },
       },
       { returnDocument: "after", session },

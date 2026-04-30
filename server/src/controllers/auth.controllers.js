@@ -12,6 +12,15 @@ exports.register = async (req, res, next) => {
   const { username, email, password } = req.body;
 
   try {
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return sendApiResponse({
+        status: 400,
+        message: "User already exists.",
+        res,
+      });
+    }
+
     const hashedPass = await getHashedPass(password, 10);
 
     const newUser = await User.create({
@@ -63,7 +72,7 @@ exports.login = async (req, res, next) => {
       status: 200,
       message: "Logged in successfully",
       res: res.cookie("refreshToken", refreshToken, refreshCookieOptions),
-      props: { accessToken }
+      props: { accessToken },
     });
   } catch (e) {
     next(e);
@@ -120,6 +129,36 @@ exports.logout = async (req, res, next) => {
       status: 200,
       message: "Logged out successfuly",
       res: res.clearCookie("refreshToken", refreshCookieOptions),
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.createAdmin = async (req, res, next) => {
+  const { username, email, password } = req.body;
+  try {
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return sendApiResponse({
+        status: 400,
+        message: "User already exists.",
+        res,
+      });
+    }
+
+    const adminUser = await User.create({
+      username,
+      email,
+      password,
+      role: "admin",
+    });
+
+    return sendApiResponse({
+      status: 201,
+      message: "Admin account created successfully",
+      res,
+      props: { data: { id: adminUser._id, role: adminUser.role } },
     });
   } catch (e) {
     next(e);
