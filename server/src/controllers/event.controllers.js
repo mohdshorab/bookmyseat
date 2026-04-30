@@ -223,11 +223,13 @@ exports.singleEvent = async (req, res, next) => {
       return sendApiResponse({ status: 404, message: "Event not found.", res });
     }
 
+    const seats = await Seat.find({ eventId: id }).lean();
+
     return sendApiResponse({
       status: 200,
       message: "Event details fetched",
       res,
-      props: { event },
+      props: { event: { ...event, seats } },
     });
   } catch (e) {
     next(e);
