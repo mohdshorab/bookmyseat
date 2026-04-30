@@ -7,10 +7,6 @@ beforeEach(async () => {
   await User.deleteMany({});
 });
 
-afterAll(async () => {
-  await mongoose.connection.close();
-});
-
 const user = {
   username: "testuser",
   email: "test@example.com",

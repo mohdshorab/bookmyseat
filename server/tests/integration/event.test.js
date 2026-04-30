@@ -1,4 +1,5 @@
 const request = require("supertest");
+const mongoose = require("mongoose");
 const app = require("../../src/app");
 const User = require("../../src/models/user.model");
 const Event = require("../../src/models/event.model");
@@ -90,7 +91,7 @@ describe("POST /bookmyseat/event", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send(validEvent);
 
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(409);
     expect(res.body.success).toBe(false);
   });
 
