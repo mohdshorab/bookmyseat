@@ -41,3 +41,57 @@ describe("POST, /auth/register", () => {
     expect(res.body.success).toBe(false);
   });
 });
+
+// auth/login
+describe("POST /bookmyseat/auth/login", () => {
+  beforeEach(async () => {
+    await request(app).post("/bookmyseat/auth/register").send(user);
+  });
+
+  test("should login successfully and return accessToken", async () => {
+    const res = await request(app)
+      .post("/bookmyseat/auth/login")
+      .send({ email: user.email, password: user.password });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.headers["set-cookie"]).toBeDefined();
+  });
+
+  test("should return 401 if password is wrong", async () => {
+    const res = await request(app)
+      .post("/bookmyseat/auth/login")
+      .send({ email: user.email, password: "wrongpassword" });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body.success).toBe(false);
+  });
+
+  test("should return 404 if email does not exist", async () => {
+    const res = await request(app)
+      .post("/bookmyseat/auth/login")
+      .send({ email: "ghost@example.com", password: "password123" });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.body.success).toBe(false);
+  });
+});
+
+// auth/logout
+describe("POST /bookmyseat/auth/logout", () => {
+  test("should logout and clear the cookie", async () => {
+
+    await request(app).post("/bookmyseat/auth/register").send(user);
+    const loginRes = await request(app)
+      .post("/bookmyseat/auth/login")
+      .send({ email: user.email, password: user.password });
+
+    const res = await request(app)
+      .post("/bookmyseat/auth/logout")
+      .set("Cookie", loginRes.headers["set-cookie"]);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.headers["set-cookie"][0]).toMatch(/refreshToken=;/);
+  });
+});
