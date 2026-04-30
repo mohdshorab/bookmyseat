@@ -102,6 +102,10 @@ exports.confirmBooking = async (req, res) => {
     session.startTransaction();
 
     const booking = await Booking.findById(bookingId).session(session);
+    if (!booking) {
+      await session.abortTransaction();
+      return sendApiresponse({ status: 404, message: "Booking not found", res });
+    }
 
     const event = await Event.findById(booking.eventId).lean().session(session);
 
